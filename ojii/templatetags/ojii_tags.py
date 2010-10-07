@@ -1,8 +1,8 @@
 from classytags.arguments import MultiValueArgument, Argument, Flag
-from classytags.core import Options
+from classytags.core import Options, Tag
 from classytags.helpers import AsTag
 from django import template
-from django.template.defaulttags import cycle
+from django.template.defaulttags import cycle, url
 from django.utils.safestring import mark_safe
 import itertools
 
@@ -81,3 +81,65 @@ class InsaneCycle(AsTag):
     def get_value(self, context, pairs, using, safe):
         return InsaneCycleObject(pairs, using, safe)
 register.tag(InsaneCycle)
+
+
+class FootnoteHolder(object):
+    def __init__(self):
+        self.data = {}
+        self.order = []
+        
+    def push(self, id, content):
+        if id not in self.order:
+            self.order.append(id)
+            self.data[id] = content
+            return len(self.order)
+        return self.order.index(id) + 1
+    
+    def __iter__(self):
+        for index, id in enumerate(self.order):
+            yield index + 1, self.data[id]
+
+
+class Footnote(Tag):
+    """
+    {% for obj in queryset %}
+        {% if obj.footnote %}
+            <sup>{% footnote obj.pk obj.footnote into "firstfootnote" %}</sup>
+        {% endif %}
+    {% endfor %}
+    
+    {% for number,footnote in firstfootnote %}
+        {{ number }}: {{ footnote }}
+    {% endfor %}
+    """
+    options = Options(
+        Argument('id'),
+        Argument('content'),
+        'into',
+        Argument('namespace', resolve=False),
+    )
+    def render_tag(self, context, id, content, namespace):
+        footnote = context.dicts[0].get(namespace, FootnoteHolder())
+        context.dicts[0][namespace] = footnote
+        return footnote.push(id, content)
+register.tag(Footnote)
+
+
+class SaneURLNode(template.Node):
+    def __init__(self, real):
+        self.real = real
+        self.view_name = template.Variable(self.real.view_name)
+        
+    def render(self, context):
+        self.real.view_name = self.view_name.resolve(context)
+        return self.real.render(context)
+
+
+@register.tag
+def saneurl(parser, token):
+    """
+    Allows variable/filters as view names in url tag.
+    
+    {% saneurl some_variable %}
+    """
+    return SaneURLNode(url(parser, token))
