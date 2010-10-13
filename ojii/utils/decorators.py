@@ -7,7 +7,7 @@ def cachedproperty(func):
     class MyClass(object):
         @cachedproperty
         def myproperty(self):
-            return heave_calculation()
+            return heavy_calculation()
     """
     key = '_cached_property_of_%s' % func.__name__
     def _wrapped(self):
